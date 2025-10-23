@@ -1,37 +1,25 @@
 import { LinearClient } from "@linear/sdk";
+import { Command } from "commander";
+import dotenv from "dotenv";
+import { readFileSync } from "fs";
+
+dotenv.config({ silent: true });
+
+if (!process.env.LINEAR_API_KEY) {
+  console.error("Error: LINEAR_API_KEY not found in .env file");
+  process.exit(1);
+}
 
 const client = new LinearClient({
-  apiKey: "",
+  apiKey: process.env.LINEAR_API_KEY,
 });
 
-//0xbow
-const teamId = "8158aa06-4b50-4dd9-ad34-4d9afeecc36a";
-const projectId = "6d2830df-8516-4235-8fee-4d1c765de76f";
+const program = new Command();
 
-const tasks = [
-  {
-    title: "unit tests: Keystore",
-    children: [
-      { title: "registerSpendingKeys" },
-      { title: "rotateRevocableKey" },
-      { title: "registerViewingKey" },
-      { title: "isKnownRoot" }
-    ],
-  },
-  {
-    title: "Integration tests",
-    children: [
-      {
-        title: "Alice (msg.sender) makes a deposit for Bob, and Bob withdraws it publicly",
-        children: [
-          { title: "Bob already has registered their keys" },
-          { title: "Bob registers their keys after the fact" }
-        ]
-      },
-      { title: "Alice consolidates two notes to make a public payment of an amount greater than any of the notes'" }
-    ],
-  },
-];
+program
+  .name("linear-cli")
+  .description("CLI tool for managing Linear tasks")
+  .version("0.0.0");
 
 async function listProjects() {
   const projects = await client.projects();
@@ -44,6 +32,7 @@ async function listProjects() {
     console.log("---");
   });
 }
+
 async function listStates(teamId) {
   const team = await client.team(teamId);
   const states = await team.states();
@@ -64,11 +53,11 @@ async function listTeams() {
   });
 }
 
-async function createChild(parentId, issue) {
+async function createChild(teamId, projectId, stateId, parentId, issue) {
   const res = await client.createIssue({
     teamId,
     parentId,
-    stateId: "ff3ea940-841b-4f53-bc9f-031ba274f717", // TODO
+    stateId,
     projectId,
     description: issue.description,
     title: issue.title,
@@ -78,35 +67,74 @@ async function createChild(parentId, issue) {
 
   if (issue.children) {
     for (const child of issue.children) {
-      await createChild(id, child);
+      await createChild(teamId, projectId, stateId, id, child);
     }
   }
 }
 
-async function createTasks() {
-  for (const task of tasks) {
-    await createChild(undefined, task);
+async function createTasks(tasksArray, teamId, projectId, stateId) {
+  for (const task of tasksArray) {
+    await createChild(teamId, projectId, stateId, undefined, task);
   }
 }
-createTasks();
-// async function createIssues() {
-//   for (const task of tasks) {
-//     const parent = await client.createIssue({
-//       teamId,
-//       stateId: "ff3ea940-841b-4f53-bc9f-031ba274f717", // TODO
-//       projectId,
-//       description: task.description,
-//       title: task.title,
-//     });
-//
-//     for (const child of task.children) {
-//       await client.createIssue({
-//         teamId,
-//         projectId,
-//         title: child.title,
-//         description: child.description,
-//         parentId: parent.issue.id,
-//       });
-//     }
-//   }
-// }
+
+program
+  .command("list-projects")
+  .description("List all available projects")
+  .action(async () => {
+    try {
+      await listProjects();
+    } catch (error) {
+      console.error("Error:", error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("list-teams")
+  .description("List all available teams")
+  .action(async () => {
+    try {
+      await listTeams();
+    } catch (error) {
+      console.error("Error:", error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("list-states")
+  .description("List all workflow states for a team")
+  .requiredOption("--team-id <teamId>", "Team ID")
+  .action(async (options) => {
+    try {
+      await listStates(options.teamId);
+    } catch (error) {
+      console.error("Error:", error.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command("create-tasks")
+  .description("Create tasks from a JSON file")
+  .requiredOption("--file <path>", "Path to JSON file containing tasks")
+  .requiredOption("--team-id <teamId>", "Team ID")
+  .requiredOption("--project-id <projectId>", "Project ID")
+  .requiredOption("--state-id <stateId>", "State ID")
+  .action(async (options) => {
+    try {
+      const { default: tasksData } = await import(options.file);
+      await createTasks(
+        tasksData,
+        options.teamId,
+        options.projectId,
+        options.stateId,
+      );
+    } catch (error) {
+      console.error("Error:", error.message);
+      process.exit(1);
+    }
+  });
+
+program.parse();
