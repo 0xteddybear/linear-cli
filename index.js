@@ -119,18 +119,12 @@ program
   .command("create-tasks")
   .description("Create tasks from a JSON file")
   .requiredOption("--file <path>", "Path to JSON file containing tasks")
-  .requiredOption("--team-id <teamId>", "Team ID")
-  .requiredOption("--project-id <projectId>", "Project ID")
-  .requiredOption("--state-id <stateId>", "State ID")
   .action(async (options) => {
     try {
-      const { default: tasksData } = await import(options.file);
-      await createTasks(
-        tasksData,
-        options.teamId,
-        options.projectId,
-        options.stateId,
-      );
+      const {
+        default: { tasks, project, team, state },
+      } = await import(options.file);
+      await createTasks(tasks, team, project, state);
     } catch (error) {
       console.error("Error:", error.message);
       process.exit(1);
